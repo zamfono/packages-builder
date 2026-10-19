@@ -40,12 +40,7 @@ from orchestrator.manifest import (
 )
 from orchestrator.packaging_overlay import install_patches, set_changelog_version_cmd
 from orchestrator.pbuilder import ARCH_BUILD_OPTS, FULL_BUILD_OPTS, run_build
-from orchestrator.published import (
-    INDEX_BASE_URL,
-    published_asterisk_versions,
-    published_binary_versions,
-    published_source_versions,
-)
+from orchestrator.published import published_binary_versions, published_source_versions
 from orchestrator.sid_source import (
     SID_SOURCELIST_CONTENT,
     parse_showsrc_version,
@@ -66,6 +61,11 @@ ARCHIVE_SOURCELIST_CONTENT = (
     "deb-src [signed-by=/etc/zamfono/zamfono-archive-keyring.gpg]"
     " https://packages.zamfono.com/debian/asterisk/22 trixie main\n"
 )
+# asterisk's archive; baresip's lives in orchestrator/baresip.py. The shared
+# helpers take these explicitly, so no product falls back to another's.
+PACKAGE = "asterisk"
+INDEX_BASE_URL = "https://packages.zamfono.com/debian/asterisk/22/dists/trixie/main/"
+UPLOAD_DIR = "/incoming"
 APT_STATE_DIR = f"{RUNTIME_DIR}/apt"
 LOCK_PATH = f"{RUNTIME_DIR}/lock"
 PRIMARY_ARCH = "amd64"
@@ -81,7 +81,7 @@ MANIFEST_PATH = "manifest/modules.json"
 # One line: the key id debsign signs .changes with. Host-local, never in Git.
 UPLOAD_KEYID_FILE = "/etc/zamfono/asterisk-builder/upload-keyid"
 # The chrooted upload account on the packages host; its forced
-# internal-sftp session starts in /incoming.
+# internal-sftp session starts in /incoming (asterisk's UPLOAD_DIR).
 UPLOAD_TARGET = "zamfono-upload@10.250.0.2"
 CHANGELOG_NAME = "Zamfono Packaging"
 CHANGELOG_EMAIL = "packages@zamfono.com"
@@ -160,7 +160,7 @@ def _next_build(arch: str) -> "tuple[str, str | None] | None":
     already published for it, or None when there is nothing to build."""
     if arch == PRIMARY_ARCH:
         sid_version = sid_asterisk_version()
-        published = published_asterisk_versions()
+        published = published_source_versions(INDEX_BASE_URL, PACKAGE)
         latest_published = published[0] if published else None
         if not should_build(sid_version, latest_published):
             print(f"up to date: sid={sid_version} published={latest_published}")
@@ -168,8 +168,8 @@ def _next_build(arch: str) -> "tuple[str, str | None] | None":
         print(f"newer sid asterisk source available: {sid_version} (published: {latest_published})")
         return compute_next_zamfono_version(sid_version, published), latest_published
 
-    sources = published_asterisk_versions()
-    binaries = published_binary_versions(arch)
+    sources = published_source_versions(INDEX_BASE_URL, PACKAGE)
+    binaries = published_binary_versions(arch, INDEX_BASE_URL, PACKAGE)
     source_version = sources[0] if sources else None
     latest_published = binaries[0] if binaries else None
     if source_version is None or (
@@ -189,8 +189,8 @@ def _retry_pending(workspace: Path) -> bool:
 
 
 def _wait_until_published(
-    arch: str, version: str, timeout: float = INGEST_TIMEOUT_SECONDS,
-    index_url: str = INDEX_BASE_URL, package: str = "asterisk",
+    arch: str, version: str, index_url: str, package: str,
+    timeout: float = INGEST_TIMEOUT_SECONDS,
 ) -> bool:
     """True once the archive's index for `arch` lists `version`."""
     deadline = time.monotonic() + timeout
@@ -247,10 +247,7 @@ def _fetch_and_patch(workspace: Path, sid_version: str, zamfono_version: str) ->
     )
 
 
-def _fetch_published_source(
-    workspace: Path, version: str,
-    sourcelist: str = ARCHIVE_SOURCELIST_CONTENT, package: str = "asterisk",
-) -> None:
+def _fetch_published_source(workspace: Path, version: str, sourcelist: str, package: str) -> None:
     """A follower's fetch: the primary's published .dsc and tarballs,
     verified by apt against the archive's signed Sources index and built
     unmodified, so every architecture ships binaries of the same source."""
@@ -507,7 +504,7 @@ def _changes_referenced_files(changes_path: Path) -> "list[str]":
     return names
 
 
-def _sign_and_upload(workspace: Path, remote_dir: "str | None" = None) -> None:
+def _sign_and_upload(workspace: Path, remote_dir: str) -> None:
     keyid = Path(UPLOAD_KEYID_FILE).read_text().strip()
     # A primary build leaves a companion *_source.changes next to the full
     # *_amd64.changes; the full one already carries source and binaries,
@@ -523,12 +520,11 @@ def _sign_and_upload(workspace: Path, remote_dir: "str | None" = None) -> None:
     changes = changes_paths[0]
     subprocess.run(["debsign", "--no-re-sign", "-k", keyid, str(changes)], check=True)
     # Plain OpenSSH sftp in batch mode (-b aborts on the first error): the
-    # upload account's chroot forces internal-sftp and starts in /incoming,
-    # so `put` lands files there. The .changes itself is transferred last —
-    # ingestion on the packages host triggers on *.changes, and everything
-    # it references must already be present.
-    # remote_dir: another archive's incoming directory in the same chroot.
-    batch = (f"cd {remote_dir}\n" if remote_dir else "") + "".join(
+    # upload account's chroot forces internal-sftp and holds one incoming
+    # directory per archive; remote_dir names this product's. The .changes
+    # itself is transferred last — ingestion on the packages host triggers
+    # on *.changes, and everything it references must already be present.
+    batch = f"cd {remote_dir}\n" + "".join(
         f"put {workspace / name}\n" for name in _changes_referenced_files(changes)
     ) + f"put {changes}\n"
     subprocess.run(
@@ -551,7 +547,7 @@ def _run_asterisk(arch: str) -> int:
     if primary:
         _fetch_and_patch(workspace, strip_zamfono_suffix(zamfono_version), zamfono_version)
     else:
-        _fetch_published_source(workspace, zamfono_version)
+        _fetch_published_source(workspace, zamfono_version, ARCHIVE_SOURCELIST_CONTENT, PACKAGE)
 
     build_result = run_build(str(workspace), FULL_BUILD_OPTS if primary else ARCH_BUILD_OPTS)
     # _fetch_and_patch creates the workspace; a run that never got that
@@ -582,14 +578,14 @@ def _run_asterisk(arch: str) -> int:
         print("lifecycle gates failed:\n" + "\n".join(lifecycle_errors), file=sys.stderr)
         return 1
 
-    _sign_and_upload(workspace)
+    _sign_and_upload(workspace, UPLOAD_DIR)
     # A run ends only once the archive serves its upload: sftp succeeds
     # even when the packages host later refuses the .changes, and the
     # next poll (queued by the timer while this run was busy)
     # can start the moment this one exits — reading the index before
     # ingest finished, it would build the same version again. A refused
     # upload keeps its workspace, like any failed attempt.
-    if not _wait_until_published(arch, zamfono_version):
+    if not _wait_until_published(arch, zamfono_version, INDEX_BASE_URL, PACKAGE):
         print(f"upload of {zamfono_version} not published after {INGEST_TIMEOUT_SECONDS}s", file=sys.stderr)
         return 1
     shutil.rmtree(workspace, ignore_errors=True)  # successful build trees are removed
@@ -700,9 +696,7 @@ def _run_baresip(arch: str) -> int:
         return 1
 
     _sign_and_upload(workspace, baresip.UPLOAD_DIR)
-    if not _wait_until_published(
-        arch, version, index_url=baresip.INDEX_BASE_URL, package=baresip.PACKAGE
-    ):
+    if not _wait_until_published(arch, version, baresip.INDEX_BASE_URL, baresip.PACKAGE):
         print(f"upload of baresip {version} not published after {INGEST_TIMEOUT_SECONDS}s", file=sys.stderr)
         return 1
     shutil.rmtree(workspace, ignore_errors=True)

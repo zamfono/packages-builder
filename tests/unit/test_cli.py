@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from orchestrator.cli import (
+    INDEX_BASE_URL,
     _changes_referenced_files,
     _container_check,
     _fetch_and_patch,
@@ -15,6 +16,7 @@ from orchestrator.cli import (
     _wait_until_published,
     _run_module_load_and_upgrade_gates,
     _safe_name,
+    _sign_and_upload,
     main,
 )
 
@@ -130,9 +132,12 @@ class FollowerNextBuildTests(unittest.TestCase):
     SOURCE = "1:22.10.1-1+zamfono13.2"
 
     def _next_build(self, sources, arm64):
-        with patch("orchestrator.cli.published_asterisk_versions", return_value=sources), \
-                patch("orchestrator.cli.published_binary_versions", return_value=arm64):
-            return _next_build("arm64")
+        with patch("orchestrator.cli.published_source_versions", return_value=sources) as source_index, \
+                patch("orchestrator.cli.published_binary_versions", return_value=arm64) as binary_index:
+            result = _next_build("arm64")
+        source_index.assert_called_once_with(INDEX_BASE_URL, "asterisk")
+        binary_index.assert_called_once_with("arm64", INDEX_BASE_URL, "asterisk")
+        return result
 
     def test_builds_the_published_source_when_the_architecture_has_nothing_yet(self, _sid):
         self.assertEqual(self._next_build([self.SOURCE], []), (self.SOURCE, None))
@@ -168,13 +173,25 @@ class WaitUntilPublishedTests(unittest.TestCase):
     @patch("orchestrator.cli.time.sleep")
     def test_returns_once_the_index_lists_the_upload(self, sleep):
         with patch("orchestrator.cli.published_binary_versions", side_effect=[[], ["older"], [self.V]]):
-            self.assertTrue(_wait_until_published("arm64", self.V))
+            self.assertTrue(_wait_until_published("arm64", self.V, INDEX_BASE_URL, "asterisk"))
         self.assertEqual(sleep.call_count, 2)
 
     @patch("orchestrator.cli.time.sleep")
     def test_gives_up_when_the_upload_never_appears(self, _sleep):
         with patch("orchestrator.cli.published_binary_versions", return_value=[]):
-            self.assertFalse(_wait_until_published("arm64", self.V, timeout=0))
+            self.assertFalse(_wait_until_published("arm64", self.V, INDEX_BASE_URL, "asterisk", timeout=0))
+
+
+class UploadDirectoryTests(unittest.TestCase):
+    def test_uploads_into_the_asterisk_incoming_directory(self):
+        fake_run = MagicMock(return_value=subprocess.CompletedProcess([], 0))
+        workspace = Path("/srv/ws")
+        with patch("orchestrator.cli.subprocess.run", fake_run), \
+                patch("orchestrator.cli.Path.read_text", return_value="KEYID\n"), \
+                patch("orchestrator.cli.Path.glob", return_value=[workspace / "asterisk_22.5.2-1+zamfono13.1_amd64.changes"]), \
+                patch("orchestrator.cli._changes_referenced_files", return_value=["asterisk.deb"]):
+            _sign_and_upload(workspace, "/incoming")
+        self.assertTrue(fake_run.call_args_list[-1].kwargs["input"].startswith("cd /incoming\n"))
 
 
 class FetchAndPatchTests(unittest.TestCase):

@@ -112,8 +112,9 @@ Debian source to follow: baresip is built from upstream.
    supply-chain hardening.
 6. **Gates:** every gate must pass (see below); any failure aborts before upload.
 7. **Sign and upload:** `debsign` the `.changes` with the builder upload key, then
-   an OpenSSH `sftp` batch upload over the private network into the packages host's
-   incoming directory (the upload account's forced `internal-sftp` accepts nothing
+   an OpenSSH `sftp` batch upload over the private network into the archive's own
+   incoming directory in the upload chroot (asterisk `/incoming`, baresip
+   `/incoming-baresip`; the upload account's forced `internal-sftp` accepts nothing
    else, and trixie's `dput` offers no sftp method). The `.changes` file is
    transferred after everything it references, because ingestion on the packages
    host triggers on `*.changes`. The run ends only once the archive's index lists

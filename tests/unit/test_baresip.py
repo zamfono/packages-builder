@@ -88,12 +88,14 @@ class NextBaresipBuildTests(unittest.TestCase):
 
     def test_follower_builds_the_published_source_without_asking_upstream(self):
         a, b, c = self._patches("9.9.9", ["4.12.0-1+zamfono13.1"], ["4.11.0-1+zamfono13.1"])
-        with a as upstream, b, c:
+        with a as upstream, b as source_index, c as binary_index:
             self.assertEqual(
                 _next_baresip_build("arm64"),
                 ("4.12.0-1+zamfono13.1", "4.11.0-1+zamfono13.1", None),
             )
         upstream.assert_not_called()
+        source_index.assert_called_once_with(baresip.INDEX_BASE_URL, "baresip")
+        binary_index.assert_called_once_with("arm64", baresip.INDEX_BASE_URL, "baresip")
 
     def test_follower_is_idle_when_its_binaries_are_current(self):
         a, b, c = self._patches("4.12.0", ["4.12.0-1+zamfono13.1"], ["4.12.0-1+zamfono13.1"])
