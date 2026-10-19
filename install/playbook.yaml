@@ -55,6 +55,15 @@
           Unattended-Upgrade::Automatic-Reboot-Time "03:00";
         mode: "0644"
 
+    # cloud-init would otherwise reset the hostname at every boot to the
+    # name the Hetzner metadata service reports, which is the server's name
+    # at creation and does not follow a rename.
+    - name: Keep the hostname across reboots
+      ansible.builtin.copy:
+        dest: /etc/cloud/cloud.cfg.d/99-zamfono-hostname.cfg
+        content: "preserve_hostname: true\n"
+        mode: "0644"
+
     - name: State directories
       ansible.builtin.file:
         path: "{{ item }}"
