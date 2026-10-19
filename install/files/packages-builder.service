@@ -1,10 +1,10 @@
 [Unit]
-Description=Zamfono Asterisk build, gate and upload run
+Description=Zamfono package build, gate and upload run
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/zamfono/asterisk-builder
+WorkingDirectory=/opt/zamfono/packages-builder
 # -u: status lines reach the journal as they happen, not at exit
 ExecStart=/usr/bin/python3 -u -m orchestrator.cli run

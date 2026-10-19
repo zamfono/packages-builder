@@ -1,4 +1,4 @@
-"""asterisk-builder's entry point. `check` only reports whether there is
+"""packages-builder's entry point. `check` only reports whether there is
 something to build (no side effects). `run` is what the systemd timer
 invokes: check, and only if needed, fetch/build/gate/sign/upload; always
 under the host lock. Gates that only need the already-produced build
@@ -50,7 +50,7 @@ from orchestrator.sid_source import (
 from orchestrator.version import compute_next_zamfono_version
 from orchestrator.versioncheck import dpkg_compare_versions, should_build, strip_zamfono_suffix
 
-RUNTIME_DIR = "/var/lib/zamfono/asterisk-builder/run"
+RUNTIME_DIR = "/var/lib/zamfono/packages-builder/run"
 # `.list`, not `.sources` — apt selects its parser by file extension.
 SID_SOURCELIST_PATH = f"{RUNTIME_DIR}/sid.list"
 ARCHIVE_SOURCELIST_PATH = f"{RUNTIME_DIR}/archive.list"
@@ -76,10 +76,10 @@ PRIMARY_ARCH = "amd64"
 RETRY_SECONDS = 6 * 3600
 # Ingest takes seconds; this only bounds a refused or stuck upload.
 INGEST_TIMEOUT_SECONDS = 600
-WORKSPACE_BASE = "/var/lib/zamfono/asterisk-builder/workspace"
+WORKSPACE_BASE = "/var/lib/zamfono/packages-builder/workspace"
 MANIFEST_PATH = "manifest/modules.json"
 # One line: the key id debsign signs .changes with. Host-local, never in Git.
-UPLOAD_KEYID_FILE = "/etc/zamfono/asterisk-builder/upload-keyid"
+UPLOAD_KEYID_FILE = "/etc/zamfono/packages-builder/upload-keyid"
 # The chrooted upload account on the packages host; its forced
 # internal-sftp session starts in /incoming (asterisk's UPLOAD_DIR).
 UPLOAD_TARGET = "zamfono-upload@10.250.0.2"

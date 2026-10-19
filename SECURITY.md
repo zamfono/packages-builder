@@ -20,7 +20,7 @@ Debian `sid` upload.
 ## Reporting
 
 Report privately via GitHub's ["Report a
-vulnerability"](https://github.com/zamfono/asterisk-builder/security/advisories/new)
+vulnerability"](https://github.com/zamfono/packages-builder/security/advisories/new)
 form. Please do not open a public issue for anything exploitable.
 
 ## Supported versions

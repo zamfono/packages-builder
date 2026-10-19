@@ -1,9 +1,9 @@
-- name: Zamfono asterisk builder host
+- name: Zamfono packages builder host
   hosts: builder
   become: true
   vars:
-    code_dir: /opt/zamfono/asterisk-builder
-    state_dir: /var/lib/zamfono/asterisk-builder
+    code_dir: /opt/zamfono/packages-builder
+    state_dir: /var/lib/zamfono/packages-builder
     packages_private_ip: 10.250.0.2
   tasks:
     # First: converge to fully patched before configuring anything — a fresh
@@ -113,19 +113,19 @@
 
     - name: systemd service
       ansible.builtin.copy:
-        src: files/asterisk-builder.service
-        dest: /etc/systemd/system/asterisk-builder.service
+        src: files/packages-builder.service
+        dest: /etc/systemd/system/packages-builder.service
         mode: "0644"
 
     - name: systemd timer (every five minutes, with a gap around the reboot)
       ansible.builtin.copy:
-        src: files/asterisk-builder.timer
-        dest: /etc/systemd/system/asterisk-builder.timer
+        src: files/packages-builder.timer
+        dest: /etc/systemd/system/packages-builder.timer
         mode: "0644"
 
     - name: Enable the timer
       ansible.builtin.systemd_service:
-        name: asterisk-builder.timer
+        name: packages-builder.timer
         enabled: true
         state: started
         daemon_reload: true

@@ -1,11 +1,11 @@
-# `zamfono/asterisk-builder` Specification
+# `zamfono/packages-builder` Specification
 
 ## Purpose
 
-`zamfono/asterisk-builder` defines the build hosts `asterisk-builder` (amd64) and
-`asterisk-builder-arm64`. They build Debian 13 (trixie) packages of **Asterisk 22**
-from Debian's `asterisk` source package, split into functional module groups, and of
-**baresip** from its upstream releases (see [baresip](#baresip)), verify every build
+`zamfono/packages-builder` defines the build hosts `packages-builder` (amd64) and
+`packages-builder-arm64`, the builders of all Zamfono packages. They build Debian 13
+(trixie) packages of **Asterisk 22** from Debian's `asterisk` source package, split
+into functional module groups, and of **baresip** from its upstream releases (see [baresip](#baresip)), verify every build
 against a set of gates, and upload the result over the private network to the
 Zamfono packages host (`zamfono/packages`), which publishes each product in its own
 archive.

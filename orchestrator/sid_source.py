@@ -21,9 +21,8 @@ def prepare_apt_state(state_dir: str) -> None:
 
 def scoped_apt_opts(sourcelist_path: str, state_dir: str) -> "list[str]":
     """The sid-scoped option pair, plus apt's list and cache directories
-    redirected under state_dir. /var/lib/apt and /var/cache/apt are
-    root-owned, and the orchestrator runs as asterisk-builder, so an
-    unredirected `apt-get update` cannot take its own lock."""
+    redirected under state_dir, so the scoped lists and downloads never
+    mix into the host's own apt state in /var/lib/apt and /var/cache/apt."""
     return [
         "-o", f"Dir::Etc::sourcelist={sourcelist_path}",
         "-o", "Dir::Etc::sourceparts=/dev/null",

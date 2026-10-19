@@ -1,10 +1,11 @@
-# asterisk-builder
+# packages-builder
 
-Builds and publishes module-split [Asterisk](https://www.asterisk.org/) 22
-packages for Debian 13 (trixie; amd64 and arm64), served as a signed APT repository at
+Builds and publishes Zamfono's Debian 13 (trixie; amd64 and arm64) packages,
+each served as a signed APT repository: module-split
+[Asterisk](https://www.asterisk.org/) 22 at
 <https://packages.zamfono.com/debian/asterisk>, and current
-[baresip](https://github.com/baresip/baresip) packages, built from upstream
-releases, at <https://packages.zamfono.com/debian/baresip>.
+[baresip](https://github.com/baresip/baresip), built from upstream releases, at
+<https://packages.zamfono.com/debian/baresip>.
 
 *Unofficial packages, built by Zamfono; not affiliated with or endorsed by
 Sangoma. Asterisk® is a registered trademark of Sangoma Technologies.*
