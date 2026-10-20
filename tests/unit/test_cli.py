@@ -212,12 +212,12 @@ class UploadDirectoryTests(unittest.TestCase):
 
 
 class FetchAndPatchTests(unittest.TestCase):
-    @patch("orchestrator.cli.drop_debian_patches")
+    @patch("orchestrator.cli.replace_debian_patches")
     @patch("orchestrator.cli.install_patches")
     @patch("orchestrator.cli.set_changelog_version_cmd", return_value=["true"])
     @patch("orchestrator.cli._write_sid_sourcelist")
     def test_discards_a_stale_workspace_left_by_a_previous_failed_attempt(
-        self, _write_sid_sourcelist, _set_changelog_version_cmd, install_patches, _drop_debian_patches
+        self, _write_sid_sourcelist, _set_changelog_version_cmd, install_patches, _replace_debian_patches
     ):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "candidate"

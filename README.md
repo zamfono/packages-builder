@@ -58,13 +58,16 @@ video modules. libre, baresip's library, ships inside it as a private library.
 ## What you get
 
 Debian's own `asterisk` source, with two changes. First, one Debian patch
-is left out: `2016_opus_plc.patch` (Opus native packet-loss concealment, not
-part of upstream Asterisk) silently drops all audio on a transcoded call leg
-after the far end changes its RTP SSRC to a slightly lower sequence number,
-often for the rest of the call. Without it `main/translate.c` is upstream's;
-Opus calls only lose the decoder's own concealment of lost packets. The
-source package shows it: the patch is commented out in
-`debian/patches/series`, and `apt changelog asterisk` names it. Second,
+is replaced with a fixed version: Debian's `2016_opus_plc.patch` (Opus
+native packet-loss concealment, not part of upstream Asterisk) silently
+drops all audio on a transcoded call leg after the far end changes its RTP
+SSRC to a slightly lower sequence number, often for the rest of the call.
+Ours (`packaging/debian-patches/`, offered to Debian as
+[#1151451](https://bugs.debian.org/1151451)) only acts on translation paths
+starting with a native-PLC decoder (Opus, Speex, iLBC), conceals gaps and
+drops late packets within 50 packets, and treats a bigger jump either way as
+a new stream. The source package shows it: `debian/patches/2016_opus_plc.patch`
+is ours, and `apt changelog asterisk` names the replacement. Second,
 the packaging: the single modules package is split into functional groups
 (`asterisk-modules-pjsip`, `asterisk-modules-voicemail`, …), so
 `apt install asterisk` brings only the core modules and each capability is
@@ -92,10 +95,10 @@ A timer, every five minutes except 02:00–03:30 UTC (around the hosts'
 03:00 reboot), compares Debian `sid`'s `asterisk` source version with the
 published one; when sid is newer, one run performs:
 
-1. **Fetch + patch** — `apt-get source` from sid; the dropped Debian
-   patch is reversed (pinned by checksum: if Debian changes or removes it,
-   the build stops for review), and the module-split packaging patch must
-   apply with zero fuzz.
+1. **Fetch + patch** — `apt-get source` from sid; the replaced Debian
+   patch is reversed and ours applied (Debian's is pinned by checksum: if
+   Debian changes or removes it, the build stops for review), and the
+   module-split packaging patch must apply with zero fuzz.
 2. **Build** — in a pbuilder trixie chroot: all library dependencies come
    from trixie (only `debhelper` is pinned from sid), and the compile
    itself runs network-isolated.
@@ -129,8 +132,9 @@ The full contract lives in [`docs/specs.md`](docs/specs.md).
   (`python3 -m orchestrator.cli run`).
 - `manifest/modules.json` — the functional module groups (the product).
 - `packaging/patches/` — the module-split packaging patch.
-- `orchestrator/packaging_overlay.py` — `DROPPED_DEBIAN_PATCHES`, the
-  Debian patches left out and why.
+- `packaging/debian-patches/` — our fixed versions of Debian patches.
+- `orchestrator/packaging_overlay.py` — `REPLACED_DEBIAN_PATCHES`, the
+  Debian patches replaced and why.
 - `packaging/baresip/debian/` — the baresip packaging (BSD-3-Clause, as
   baresip itself).
 - `install/` — Ansible provisioning of the build host.

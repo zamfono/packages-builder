@@ -6,9 +6,10 @@ import unittest
 from pathlib import Path
 
 from orchestrator.packaging_overlay import (
-    changelog_drop_cmds,
-    drop_debian_patches,
+    REPLACED_DEBIAN_PATCHES,
+    changelog_replace_cmds,
     install_patches,
+    replace_debian_patches,
     set_changelog_version_cmd,
 )
 
@@ -20,57 +21,73 @@ CONTROL_PATCH = """--- a/debian/control
 """
 
 
-LATE_DROP_PATCH = """--- a/main/translate.c
+DEBIAN_PATCH = """--- a/main/translate.c
 +++ b/main/translate.c
 @@ -1,1 +1,1 @@
 -upstream
-+patched
++debian
 """
 
 
-class DropDebianPatchesTests(unittest.TestCase):
+OUR_PATCH = """--- a/main/translate.c
++++ b/main/translate.c
+@@ -1,1 +1,1 @@
+-upstream
++fixed
+"""
+
+
+class ReplaceDebianPatchesTests(unittest.TestCase):
     def _extracted_tree(self, tmp):
-        # what dpkg-source -x leaves: the patch applied and recorded in .pc/
+        # what dpkg-source -x leaves: Debian's patch applied and recorded in .pc/
         source_dir = Path(tmp) / "source"
         (source_dir / "main").mkdir(parents=True)
-        (source_dir / "main" / "translate.c").write_text("patched\n")
+        (source_dir / "main" / "translate.c").write_text("debian\n")
         (source_dir / "debian" / "patches").mkdir(parents=True)
-        (source_dir / "debian" / "patches" / "late.patch").write_text(LATE_DROP_PATCH)
-        (source_dir / "debian" / "patches" / "series").write_text("other.patch\nlate.patch\n")
-        (source_dir / ".pc" / "late.patch").mkdir(parents=True)
-        (source_dir / ".pc" / "applied-patches").write_text("other.patch\nlate.patch\n")
-        return source_dir
+        (source_dir / "debian" / "patches" / "plc.patch").write_text(DEBIAN_PATCH)
+        (source_dir / "debian" / "patches" / "series").write_text("other.patch\nplc.patch\n")
+        (source_dir / ".pc" / "plc.patch").mkdir(parents=True)
+        (source_dir / ".pc" / "applied-patches").write_text("other.patch\nplc.patch\n")
+        ours = Path(tmp) / "ours"
+        ours.mkdir()
+        (ours / "plc.patch").write_text(OUR_PATCH)
+        return source_dir, ours
 
-    def test_reverses_the_patch_comments_it_out_in_series_and_removes_it_from_pc(self):
+    def test_applies_ours_instead_of_debians_and_keeps_series_and_pc(self):
         with tempfile.TemporaryDirectory() as tmp:
-            source_dir = self._extracted_tree(tmp)
-            pin = hashlib.sha256(LATE_DROP_PATCH.encode()).hexdigest()
+            source_dir, ours = self._extracted_tree(tmp)
+            pin = hashlib.sha256(DEBIAN_PATCH.encode()).hexdigest()
 
-            drop_debian_patches(source_dir, {"late.patch": (pin, "why")})
+            replace_debian_patches(source_dir, ours, {"plc.patch": (pin, "why")})
 
-            self.assertEqual((source_dir / "main" / "translate.c").read_text(), "upstream\n")
-            self.assertEqual((source_dir / "debian" / "patches" / "series").read_text(), "other.patch\n#late.patch\n")
-            self.assertEqual((source_dir / ".pc" / "applied-patches").read_text(), "other.patch\n")
-            self.assertTrue((source_dir / "debian" / "patches" / "late.patch").exists())
-            self.assertFalse((source_dir / ".pc" / "late.patch").exists())
+            self.assertEqual((source_dir / "main" / "translate.c").read_text(), "fixed\n")
+            self.assertEqual((source_dir / "debian" / "patches" / "plc.patch").read_text(), OUR_PATCH)
+            self.assertEqual((source_dir / "debian" / "patches" / "series").read_text(), "other.patch\nplc.patch\n")
+            self.assertEqual((source_dir / ".pc" / "applied-patches").read_text(), "other.patch\nplc.patch\n")
+            self.assertTrue((source_dir / ".pc" / "plc.patch").is_dir())
 
     def test_a_patch_changed_in_debian_stops_the_build(self):
         with tempfile.TemporaryDirectory() as tmp:
-            source_dir = self._extracted_tree(tmp)
+            source_dir, ours = self._extracted_tree(tmp)
             with self.assertRaisesRegex(RuntimeError, "changed in Debian"):
-                drop_debian_patches(source_dir, {"late.patch": ("0" * 64, "why")})
-            self.assertEqual((source_dir / "main" / "translate.c").read_text(), "patched\n")
+                replace_debian_patches(source_dir, ours, {"plc.patch": ("0" * 64, "why")})
+            self.assertEqual((source_dir / "main" / "translate.c").read_text(), "debian\n")
+            self.assertEqual((source_dir / "debian" / "patches" / "plc.patch").read_text(), DEBIAN_PATCH)
 
     def test_a_patch_gone_from_debian_stops_the_build(self):
         with tempfile.TemporaryDirectory() as tmp:
-            source_dir = self._extracted_tree(tmp)
+            source_dir, ours = self._extracted_tree(tmp)
             with self.assertRaisesRegex(RuntimeError, "no longer in the source"):
-                drop_debian_patches(source_dir, {"gone.patch": ("0" * 64, "why")})
+                replace_debian_patches(source_dir, ours, {"gone.patch": ("0" * 64, "why")})
 
-    def test_every_dropped_patch_is_stated_in_the_changelog(self):
+    def test_the_shipped_replacement_matches_the_pinned_patch_name(self):
+        for name in REPLACED_DEBIAN_PATCHES:
+            self.assertTrue((Path("packaging/debian-patches") / name).is_file(), name)
+
+    def test_every_replaced_patch_is_stated_in_the_changelog(self):
         self.assertEqual(
-            changelog_drop_cmds({"late.patch": ("0" * 64, "it breaks audio.")}),
-            [["dch", "--append", "Don't apply Debian's late.patch: it breaks audio."]],
+            changelog_replace_cmds({"plc.patch": ("0" * 64, "it breaks audio.")}),
+            [["dch", "--append", "Replace Debian's plc.patch with a fixed version: it breaks audio."]],
         )
 
 

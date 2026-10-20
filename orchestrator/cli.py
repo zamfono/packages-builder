@@ -39,9 +39,9 @@ from orchestrator.manifest import (
     validate_structure,
 )
 from orchestrator.packaging_overlay import (
-    changelog_drop_cmds,
-    drop_debian_patches,
+    changelog_replace_cmds,
     install_patches,
+    replace_debian_patches,
     set_changelog_version_cmd,
 )
 from orchestrator.pbuilder import ARCH_BUILD_OPTS, FULL_BUILD_OPTS, run_build
@@ -242,7 +242,7 @@ def _fetch_and_patch(workspace: Path, sid_version: str, zamfono_version: str) ->
     # exactly one, so the fetched one is junk once the tree is extracted.
     for fetched_dsc in workspace.glob("*.dsc"):
         fetched_dsc.unlink()
-    drop_debian_patches(source_dir)
+    replace_debian_patches(source_dir, "packaging/debian-patches")
     install_patches(source_dir, "packaging/patches")
     # Stamps zamfono_version into debian/changelog's top entry — without
     # this, the build runs under the raw sid version and every
@@ -250,7 +250,7 @@ def _fetch_and_patch(workspace: Path, sid_version: str, zamfono_version: str) ->
     # name the author of that entry; left unset, dch composes one from the
     # build account and the host name, which lintian rejects as a bogus
     # mail host.
-    for cmd in [set_changelog_version_cmd(zamfono_version), *changelog_drop_cmds()]:
+    for cmd in [set_changelog_version_cmd(zamfono_version), *changelog_replace_cmds()]:
         subprocess.run(
             cmd, cwd=source_dir, check=True,
             env={**os.environ, "DEBEMAIL": CHANGELOG_EMAIL, "DEBFULLNAME": CHANGELOG_NAME},
