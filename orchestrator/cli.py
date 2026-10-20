@@ -38,7 +38,12 @@ from orchestrator.manifest import (
     validate_full_coverage,
     validate_structure,
 )
-from orchestrator.packaging_overlay import install_patches, set_changelog_version_cmd
+from orchestrator.packaging_overlay import (
+    changelog_drop_cmds,
+    drop_debian_patches,
+    install_patches,
+    set_changelog_version_cmd,
+)
 from orchestrator.pbuilder import ARCH_BUILD_OPTS, FULL_BUILD_OPTS, run_build
 from orchestrator.published import published_binary_versions, published_source_versions
 from orchestrator.sid_source import (
@@ -155,14 +160,17 @@ def sid_asterisk_version() -> str:
     return parse_showsrc_version(result.stdout)
 
 
-def _next_build(arch: str) -> "tuple[str, str | None] | None":
+def _next_build(arch: str, rebuild: bool = False) -> "tuple[str, str | None] | None":
     """The version to build on this architecture and the latest version
-    already published for it, or None when there is nothing to build."""
+    already published for it, or None when there is nothing to build.
+    `rebuild` makes the primary build sid's version even when it is already
+    published, as the next +zamfono13.N: the timer only notices new Debian
+    uploads, not packaging changes in this repository."""
     if arch == PRIMARY_ARCH:
         sid_version = sid_asterisk_version()
         published = published_source_versions(INDEX_BASE_URL, PACKAGE)
         latest_published = published[0] if published else None
-        if not should_build(sid_version, latest_published):
+        if not rebuild and not should_build(sid_version, latest_published):
             print(f"up to date: sid={sid_version} published={latest_published}")
             return None
         print(f"newer sid asterisk source available: {sid_version} (published: {latest_published})")
@@ -233,6 +241,7 @@ def _fetch_and_patch(workspace: Path, sid_version: str, zamfono_version: str) ->
     # exactly one, so the fetched one is junk once the tree is extracted.
     for fetched_dsc in workspace.glob("*.dsc"):
         fetched_dsc.unlink()
+    drop_debian_patches(source_dir)
     install_patches(source_dir, "packaging/patches")
     # Stamps zamfono_version into debian/changelog's top entry — without
     # this, the build runs under the raw sid version and every
@@ -240,11 +249,11 @@ def _fetch_and_patch(workspace: Path, sid_version: str, zamfono_version: str) ->
     # name the author of that entry; left unset, dch composes one from the
     # build account and the host name, which lintian rejects as a bogus
     # mail host.
-    subprocess.run(
-        set_changelog_version_cmd(zamfono_version),
-        cwd=source_dir, check=True,
-        env={**os.environ, "DEBEMAIL": CHANGELOG_EMAIL, "DEBFULLNAME": CHANGELOG_NAME},
-    )
+    for cmd in [set_changelog_version_cmd(zamfono_version), *changelog_drop_cmds()]:
+        subprocess.run(
+            cmd, cwd=source_dir, check=True,
+            env={**os.environ, "DEBEMAIL": CHANGELOG_EMAIL, "DEBFULLNAME": CHANGELOG_NAME},
+        )
 
 
 def _fetch_published_source(workspace: Path, version: str, sourcelist: str, package: str) -> None:
@@ -533,9 +542,9 @@ def _sign_and_upload(workspace: Path, remote_dir: str) -> None:
     )
 
 
-def _run_asterisk(arch: str) -> int:
+def _run_asterisk(arch: str, rebuild: bool = False) -> int:
     primary = arch == PRIMARY_ARCH
-    next_build = _next_build(arch)
+    next_build = _next_build(arch, rebuild)
     if next_build is None:
         return 0
     zamfono_version, latest_published = next_build
@@ -703,7 +712,7 @@ def _run_baresip(arch: str) -> int:
     return 0
 
 
-def _cmd_run(_args) -> int:
+def _cmd_run(args) -> int:
     lock = acquire_lock(LOCK_PATH)
     if lock is None:
         print("another run holds the lock; exiting without changes")
@@ -713,9 +722,9 @@ def _cmd_run(_args) -> int:
         # One product's failure (a red gate, an unreachable upstream) never
         # keeps the other from building; the run fails if either did.
         status = 0
-        for run in (_run_asterisk, _run_baresip):
+        for run in (lambda: _run_asterisk(arch, args.rebuild), lambda: _run_baresip(arch)):
             try:
-                status = max(status, run(arch))
+                status = max(status, run())
             except Exception:
                 traceback.print_exc()
                 status = 1
@@ -728,7 +737,12 @@ def main(argv: "list[str]") -> int:
     parser = argparse.ArgumentParser(prog="orchestrator")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("check").set_defaults(func=_cmd_check)
-    subparsers.add_parser("run").set_defaults(func=_cmd_run)
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument(
+        "--rebuild", action="store_true",
+        help="on the primary, rebuild sid's asterisk as the next +zamfono13.N even if already published",
+    )
+    run_parser.set_defaults(func=_cmd_run)
     args = parser.parse_args(argv)
     return args.func(args)
 

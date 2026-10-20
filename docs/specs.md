@@ -100,7 +100,14 @@ Debian source to follow: baresip is built from upstream.
 2. **Fetch:** `apt-get source asterisk` from sid. Building sid source on trixie
    requires `debhelper` (and its version-locked binaries) from **unstable**, pinned
    so only debhelper is raised.
-3. **Patch:** the module-split packaging patch must apply with **zero fuzz**
+3. **Patch:** first, each Debian patch in `DROPPED_DEBIAN_PATCHES`
+   (`orchestrator/packaging_overlay.py`) is reversed, removed from `.pc/`, and
+   commented out in `debian/patches/series` (Debian's own way of disabling a
+   patch; the patch file stays), and the Zamfono `debian/changelog` entry gets one
+   line per dropped patch naming it and why. Each is pinned by SHA-256; a changed or
+   missing patch fails the run, so a human decides again. Today that is only
+   `2016_opus_plc.patch`, which silences transcoded legs after a far end's SSRC
+   change. Then the module-split packaging patch must apply with **zero fuzz**
    against the fetched source; fuzz means the Debian packaging moved and the patch
    needs a rebase, not a forced apply.
 4. **Version:** append `+zamfono13.N` to the Debian source version. `N` starts at 1

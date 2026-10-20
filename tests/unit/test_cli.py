@@ -127,6 +127,23 @@ class RunSubcommandTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
 
 
+class PrimaryRebuildTests(unittest.TestCase):
+    PUBLISHED = ["1:22.10.1-1+zamfono13.1"]
+
+    def _next_build(self, rebuild):
+        with patch("orchestrator.cli.sid_asterisk_version", return_value="1:22.10.1-1"), \
+                patch("orchestrator.cli.published_source_versions", return_value=self.PUBLISHED):
+            return _next_build("amd64", rebuild)
+
+    def test_an_already_published_sid_version_is_not_built(self):
+        self.assertIsNone(self._next_build(rebuild=False))
+
+    def test_rebuild_builds_it_again_as_the_next_counter(self):
+        self.assertEqual(
+            self._next_build(rebuild=True), ("1:22.10.1-1+zamfono13.2", "1:22.10.1-1+zamfono13.1"),
+        )
+
+
 @patch("orchestrator.cli.sid_asterisk_version", side_effect=AssertionError("followers never read sid"))
 class FollowerNextBuildTests(unittest.TestCase):
     SOURCE = "1:22.10.1-1+zamfono13.2"
@@ -195,11 +212,12 @@ class UploadDirectoryTests(unittest.TestCase):
 
 
 class FetchAndPatchTests(unittest.TestCase):
+    @patch("orchestrator.cli.drop_debian_patches")
     @patch("orchestrator.cli.install_patches")
     @patch("orchestrator.cli.set_changelog_version_cmd", return_value=["true"])
     @patch("orchestrator.cli._write_sid_sourcelist")
     def test_discards_a_stale_workspace_left_by_a_previous_failed_attempt(
-        self, _write_sid_sourcelist, _set_changelog_version_cmd, install_patches
+        self, _write_sid_sourcelist, _set_changelog_version_cmd, install_patches, _drop_debian_patches
     ):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "candidate"
