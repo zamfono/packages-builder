@@ -173,7 +173,8 @@ def _next_build(arch: str, rebuild: bool = False) -> "tuple[str, str | None] | N
         if not rebuild and not should_build(sid_version, latest_published):
             print(f"up to date: sid={sid_version} published={latest_published}")
             return None
-        print(f"newer sid asterisk source available: {sid_version} (published: {latest_published})")
+        reason = "rebuild requested" if rebuild else "newer sid asterisk source available"
+        print(f"{reason}: {sid_version} (published: {latest_published})")
         return compute_next_zamfono_version(sid_version, published), latest_published
 
     sources = published_source_versions(INDEX_BASE_URL, PACKAGE)
